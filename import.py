@@ -23,8 +23,7 @@ xml_namespaces = {
 def save_resource_node(envelope, db, idx):
     try:
         found_items = idx.query('resource:' + urllib.quote_plus(envelope['resource_locator']))
-    except Exception, ex:
-        print ex
+    except Exception:
         found_items = []
     if  len(found_items) > 0:
         new_node = found_items[0]
@@ -55,6 +54,7 @@ def process_conforms_to_data(conforms_to, db, idx, new_node):
         if  len(found_standard) > 0:
             cc_node = found_standard[0]
             cc_node.properties['standard'] = i.standard
+            cc_node.update()
         else:
             cc_node = db.nodes.create(standard=i.standard)
             idx['standard'][i.standard] = cc_node
@@ -87,12 +87,20 @@ def import_cc_state(url, prefix, valid_ids):
 
 def process_cc_standards(db, idx):
     ids = set()
+
+    def test_standard(standard):
+        query = "standard:" + urllib.quote_plus(standard)
+        standard_query = idx.query(query)
+        if len(standard_query) > 0:
+            return standard_query[0]
+        else:
+            return db.nodes.create(standard=urllib.quote_plus(standard))
     with open('E0330_ccss_identifiers.csv', 'rU') as f:
         dr = DictReader(f)
         for row in dr:
-            dot_node = db.nodes.create(standard=row['Dot notation'])
-            url_node = db.nodes.create(standard=row['Current URL'])
-            uuid_node = db.nodes.create(standard=row['GUID'])
+            dot_node = test_standard(row['Dot notation'])
+            url_node = test_standard(row['URI'])
+            uuid_node = test_standard(row['GUID'])
             idx['standard'][urllib.quote_plus(row['Dot notation'])] = dot_node
             url_node.sameAs(dot_node)
             uuid_node.sameAs(dot_node)
@@ -131,18 +139,18 @@ def main(args):
             ("Math", "http://asn.jesandco.org/resources/D10003FB_manifest.json")]
     whitelist = ['matched', 'recommended', 'aligned']
     db, idx = init_neo4j(args.db)
-    results = requests.get(args.url)
-    results = items(results.raw, 'documents.item')
-    process_data_service(results, db, idx, get_conforms_to_data)
+    # results = requests.get(args.url)
+    # results = items(results.raw, 'documents.item')
+    # process_data_service(results, db, idx, get_conforms_to_data)
 
-    def filter_paradata(item):
-        valid = True
-        for x in item['resource_data']:
-            valid = valid or x['resource_data']['verb']['action'] in whitelist
-        return valid
-    results = requests.get(args.para)
-    results = (x for x in items(results.raw, 'documents.item') if filter_paradata(x))
-    process_data_service(results, db, idx, get_paradata_standards_data)
+    # def filter_paradata(item):
+    #     valid = True
+    #     for x in item['resource_data']:
+    #         valid = valid or x['resource_data']['verb']['action'] in whitelist
+    #     return valid
+    # results = requests.get(args.para)
+    # results = (x for x in items(results.raw, 'documents.item') if filter_paradata(x))
+    # process_data_service(results, db, idx, get_paradata_standards_data)
     ids = process_cc_standards(db, idx)
     process_purl_data(db, idx, urls, ids)
 
