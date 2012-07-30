@@ -3,8 +3,11 @@
 from neo4jrestclient.client import GraphDatabase
 import requests
 import argparse
+from datetime import datetime
+import pickle
 from csv import DictReader
 from lxml import etree
+import urlparse
 from ijson import items
 import urllib
 from collections import namedtuple
@@ -28,8 +31,10 @@ def save_resource_node(envelope, db, idx):
     if  len(found_items) > 0:
         new_node = found_items[0]
     else:
+        print "Created Content Node"
         new_node = db.nodes.create(resource=envelope['resource_locator'])
         idx['resource'][urllib.quote_plus(envelope['resource_locator'])] = new_node
+    print new_node.url
     return new_node
 
 
@@ -48,7 +53,7 @@ def get_paradata_standards_data(envelope):
 def process_conforms_to_data(conforms_to, db, idx, new_node):
     for i in conforms_to:
         try:
-            found_standard = idx.query('standard:' + i.standard)
+            found_standard = idx.query(':'.join(['standard', i.standard]))
         except:
             found_standard = []
         if  len(found_standard) > 0:
@@ -56,6 +61,7 @@ def process_conforms_to_data(conforms_to, db, idx, new_node):
             cc_node.properties['standard'] = i.standard
             cc_node.update()
         else:
+            print "Created CC Node"
             cc_node = db.nodes.create(standard=i.standard)
             idx['standard'][i.standard] = cc_node
         new_node.relationships.create(i.relation, cc_node)
@@ -89,19 +95,22 @@ def process_cc_standards(db, idx):
     ids = set()
 
     def test_standard(standard):
-        query = "standard:" + urllib.quote_plus(standard)
-        standard_query = idx.query(query)
-        if len(standard_query) > 0:
-            return standard_query[0]
+        query = ':'.join(["standard", urllib.quote_plus(standard)])
+        result = idx.query(query)
+        if len(result) > 0:
+            return result[0]
         else:
-            return db.nodes.create(standard=urllib.quote_plus(standard))
+            print "Created Standard Node"
+            print query[9:] == urllib.quote_plus(standard)
+            node = db.nodes.create(standard=standard)
+            idx['standard'][urllib.quote_plus(standard)] = dot_node
+            return node
     with open('E0330_ccss_identifiers.csv', 'rU') as f:
         dr = DictReader(f)
         for row in dr:
             dot_node = test_standard(row['Dot notation'])
             url_node = test_standard(row['URI'])
             uuid_node = test_standard(row['GUID'])
-            idx['standard'][urllib.quote_plus(row['Dot notation'])] = dot_node
             url_node.sameAs(dot_node)
             uuid_node.sameAs(dot_node)
             ids.add(row['Dot notation'])
@@ -134,23 +143,53 @@ def process_data_service(results, db, idx, conforms_func):
         save_data(result_item['resource_data'], db, idx, conforms_func)
 
 
+def load_date():
+    try:
+        with open('date', 'r') as f:
+            start = pickle.load(f)
+    except:
+        start = None
+    until = datetime.utcnow()
+    with open('date', 'w') as f:
+        pickle.dump(until, f)
+    return start, until
+
+
+def load_from_dataservice(url, start, until):
+    parts = urlparse.urlparse(url)
+    query = {}
+    if start is not None:
+        query['from'] = start.isoformat()
+    if until is not None:
+        query['until'] = until.isoformat()
+    parts = urlparse.ParseResult(scheme=parts.scheme,
+                                 netloc=parts.netloc,
+                                 path=parts.path,
+                                 params=parts.params,
+                                 query=urllib.urlencode(query),
+                                 fragment=parts.fragment)
+    url = urlparse.urlunparse(parts)
+    results = requests.get(url)
+    results = items(results.raw, 'documents.item')
+    return results
+
+
 def main(args):
+    start, until = load_date()
     urls = [('Literacy', 'http://asn.jesandco.org/resources/D10003FC_manifest.json'),
             ("Math", "http://asn.jesandco.org/resources/D10003FB_manifest.json")]
     whitelist = ['matched', 'recommended', 'aligned']
     db, idx = init_neo4j(args.db)
-    # results = requests.get(args.url)
-    # results = items(results.raw, 'documents.item')
-    # process_data_service(results, db, idx, get_conforms_to_data)
+    results = load_from_dataservice(args.url, start, until)
+    process_data_service(results, db, idx, get_conforms_to_data)
 
-    # def filter_paradata(item):
-    #     valid = True
-    #     for x in item['resource_data']:
-    #         valid = valid or x['resource_data']['verb']['action'] in whitelist
-    #     return valid
-    # results = requests.get(args.para)
-    # results = (x for x in items(results.raw, 'documents.item') if filter_paradata(x))
-    # process_data_service(results, db, idx, get_paradata_standards_data)
+    def filter_paradata(item):
+        valid = True
+        for x in item['resource_data']:
+            valid = valid or x['resource_data']['verb']['action'] in whitelist
+        return valid
+    results = (x for x in load_from_dataservice(args.para, start, until) if filter_paradata(x))
+    process_data_service(results, db, idx, get_paradata_standards_data)
     ids = process_cc_standards(db, idx)
     process_purl_data(db, idx, urls, ids)
 
