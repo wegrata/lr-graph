@@ -39,6 +39,7 @@ def get_conforms_to_data(envelope):
     xml = etree.fromstring(envelope['resource_data'])
     return (StandardsRelationship(standard=urllib.quote_plus(x.text), relation='conformsTo') for x in xml.xpath("./dct:conformsTo", namespaces=xml_namespaces))
 
+#Retrieve submitter from conforms to data
 def get_conforms_to_submitter_data(envelope):
     xml = etree.fromstring(envelope['resource_data'])
     for x in xml.xpath("./dc:creator", namespaces=xml_namespaces):
@@ -51,6 +52,7 @@ def get_paradata_standards_data(envelope):
         if related['objectType'].lower() == 'academic standard':
             yield StandardsRelationship(standard=urllib.quote_plus(related['id']), relation=urllib.quote_plus(para['verb']['action']))
 
+#Retrieve actor data from paradata
 def get_paradata_actor_data(envelope):
     para = envelope['resource_data']['activity']
     if 'displayName' in para['actor'].keys():
@@ -150,19 +152,20 @@ def init_neo4j(url):
 #Get the resource_data from each result and save 
 def process_data_service(results, db, idx, conforms_func, submitter_func=None):
     for result_item in results:
-        #print 'RESULT ITEM - ' + str(result_item)
         save_data(result_item['resource_data'], db, idx, conforms_func, submitter_func)
 
 
 def main(args):
     urls = [('Literacy', 'http://asn.jesandco.org/resources/D10003FC_manifest.json'),
             ("Math", "http://asn.jesandco.org/resources/D10003FB_manifest.json")]
+    
+    #Relationships
     whitelist = ['matched', 'recommended', 'aligned']
     
     #Initialize DB and index
     db, idx = init_neo4j(args.db)
     
-    #Get conformsT0 LR data
+    #Get conformsTo LR data
     results = requests.get(args.url)
     results = items(results.raw, 'documents.item')
 
@@ -183,12 +186,13 @@ def main(args):
     #Send in valid paradata standards data
     process_data_service(results, db, idx, get_paradata_standards_data, get_paradata_actor_data)
     
-        
+    #Create nodes from cc standards    
     ids = process_cc_standards(db, idx)
 
-
+    #Create relationships from purl data
     process_purl_data(db, idx, urls, ids)
 
+#Add args in main for conformsTo and paradata URLs to harvest from
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Import LR data into Neo4j")
     parser.add_argument("--url", dest="url", default='https://node01.public.learningregistry.net/extract/standards-alignment-dct-conformsTo/resource-by-ts', help="URL to the data service to harvest from")
