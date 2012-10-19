@@ -220,11 +220,12 @@ def main(args):
     db, ridx, sidx = init_neo4j(args.db)
     
     #Get conformsTo LR data
-    results = requests.get(args.url, prefetch=False)
-    results = items(results.raw, 'documents.item')
+    if (args.url is not "None"):
+        results = requests.get(args.url, prefetch=False)
+        results = items(results.raw, 'documents.item')
 
-    #Save conformsTo data
-    process_data_service(results, db, ridx, sidx, get_conforms_to_data, get_conforms_to_submitter_data)
+        #Save conformsTo data
+        process_data_service(results, db, ridx, sidx, get_conforms_to_data, get_conforms_to_submitter_data)
 
     #Return paradata matching to matched, recommended, or aligned
     def filter_paradata(item):
@@ -232,13 +233,14 @@ def main(args):
         for x in item['resource_data']:
             valid = valid or x['resource_data']['verb']['action'] in whitelist
         return valid
-    
-    #Get paradata
-    results = requests.get(args.para)
-    results = (x for x in items(results.raw, 'documents.item') if filter_paradata(x))
 
-    #Send in valid paradata standards data
-    process_data_service(results, db, ridx, sidx, get_paradata_standards_data, get_paradata_actor_data)
+    if (args.para is not "None"):    
+        #Get paradata
+        results = requests.get(args.para, prefetch=False)
+        results = (x for x in items(results.raw, 'documents.item') if filter_paradata(x))
+
+        #Send in valid paradata standards data
+        process_data_service(results, db, ridx, sidx, get_paradata_standards_data, get_paradata_actor_data)
     
     #Create nodes from cc standards    
     ids = process_cc_standards(db, ridx)
