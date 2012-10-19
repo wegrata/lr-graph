@@ -249,8 +249,8 @@ def main(args):
 #Add args in main for conformsTo and paradata URLs to harvest from
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Import LR data into Neo4j")
-    parser.add_argument("--url", dest="url", default='https://node01.public.learningregistry.net/extract/standards-alignment-dct-conformsTo/resource-by-ts', help="URL to the data service to harvest from")
-    parser.add_argument("--para", dest="para", default='https://node01.public.learningregistry.net/extract/standards-alignment-lr-paradata/resource-by-ts', help="URL to the data service to harvest from")
-    parser.add_argument("--db", dest="db", default="http://localhost:7474/db/data/", help="URL to neo4j database")
+    parser.add_argument("--url", dest="url", default='http://learnreg1.sri.com/extract/standards-alignment-dct-conformsTo/resource-by-ts', help="URL to the data service to harvest from")
+    parser.add_argument("--para", dest="para", default='http://learnreg1.sri.com/extract/standards-alignment-lr-paradata/resource-by-ts', help="URL to the data service to harvest from")
+    parser.add_argument("--db", dest="db", default="http://neo4j:learnreg3@learnreg3.sri.com/db/data/", help="URL to neo4j database")
     args = parser.parse_args()
     main(args)
