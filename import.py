@@ -220,7 +220,7 @@ def main(args):
     db, ridx, sidx = init_neo4j(args.db)
     
     #Get conformsTo LR data
-    if (args.url is not "None"):
+    if args.url is not None and args.url is not "None":
         results = requests.get(args.url, prefetch=False)
         results = items(results.raw, 'documents.item')
 
@@ -234,7 +234,7 @@ def main(args):
             valid = valid or x['resource_data']['verb']['action'] in whitelist
         return valid
 
-    if (args.para is not "None"):    
+    if args.para is not None and args.para is not "None":    
         #Get paradata
         results = requests.get(args.para, prefetch=False)
         results = (x for x in items(results.raw, 'documents.item') if filter_paradata(x))
