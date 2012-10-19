@@ -98,7 +98,7 @@ def process_conforms_to_data(conforms_to, db, idx, new_node):
 #Create new node with data
 def save_data(data_set, db, ridx, sidx, get_conforms_to_data_from_envelope, submitter_func=None):
     for envelope in data_set:
-        new_node = save_resource_node(envelope, db, idx)
+        new_node = save_resource_node(envelope, db, ridx)
         if submitter_func is not None:
             #Only create submitter_node if there is data supplied in envelope
             if submitter_func(envelope):
@@ -164,19 +164,40 @@ def process_purl_data(db, idx, urls, ids):
 
 
 def init_neo4j(url):
+    orig_parts = urlparse.urlparse(url)
+    url_parts = list(orig_parts[0:6])
+    params = {
+        "url": url,
+
+    }
+
+    if (orig_parts.username and orig_parts.password):
+        url_parts[1] = orig_parts.netloc[len(orig_parts.username)+len(orig_parts.password)+2:]
+        params.update( {
+                "url": urlparse.urlunparse(url_parts),
+                "username": orig_parts.username,
+                "password": orig_parts.password
+            })
+
     #Initialize DB
-    db = GraphDatabase(url)
+    db = GraphDatabase(**params)
     
     #If resources index already exists, grab it, else create it
-    if RESOURCE_INDEX_NAME in db.nodes.indexes:
-        ridx = db.nodes.indexes.get(RESOURCE_INDEX_NAME)
-    else:
+    try:
+        if RESOURCE_INDEX_NAME in db.nodes.indexes:
+            ridx = db.nodes.indexes.get(RESOURCE_INDEX_NAME)
+        else:
+            ridx = db.nodes.indexes.create(RESOURCE_INDEX_NAME, type="fulltext")
+    except:
         ridx = db.nodes.indexes.create(RESOURCE_INDEX_NAME, type="fulltext")
 
     #If resources index already exists, grab it, else create it
-    if SUBMITTER_INDEX_NAME in db.nodes.indexes:
-        sidx = db.nodes.indexes.get(SUBMITTER_INDEX_NAME)
-    else:
+    try:
+        if SUBMITTER_INDEX_NAME in db.nodes.indexes:
+            sidx = db.nodes.indexes.get(SUBMITTER_INDEX_NAME)
+        else:
+            sidx = db.nodes.indexes.create(SUBMITTER_INDEX_NAME, type="fulltext")
+    except:
         sidx = db.nodes.indexes.create(SUBMITTER_INDEX_NAME, type="fulltext")
 
 
@@ -199,7 +220,7 @@ def main(args):
     db, ridx, sidx = init_neo4j(args.db)
     
     #Get conformsTo LR data
-    results = requests.get(args.url)
+    results = requests.get(args.url, prefetch=False)
     results = items(results.raw, 'documents.item')
 
     #Save conformsTo data
