@@ -15,15 +15,15 @@ import types
 from collections import namedtuple
 StandardsRelationship = namedtuple("StandardsRelationship", ['standard', 'relation'])
 RESOURCE_INDEX_NAME = 'resources'
-SUBMITTER_INDEX_NAME = 'submitters'
 xml_namespaces = {
-                  "dc": "http://purl.org/dc/elements/1.1/",
+                  "dc": "http://purl.orig_parts/dc/elements/1.1/",
                   "dct": "http://purl.org/dc/terms/",
                   "ieee": "http://www.ieee.org/xsd/LOMv1p0",
                   "nsdl_dc": "http://ns.nsdl.org/nsdl_dc_v1.02/",
                   "xsi": "http://www.w3.org/2001/XMLSchema-instance",
                   "oa": "http://www.openarchives.org/OAI/2.0/"
                  }
+
 
 #Query the index to find the resource, create node if not exist
 def save_resource_node(envelope, db, idx):
@@ -33,12 +33,13 @@ def save_resource_node(envelope, db, idx):
     except Exception:
         found_items = []
 
-    if  len(found_items) > 0:
+    if len(found_items) > 0:
         new_node = found_items[0]
     else:
         new_node = db.nodes.create(resource=envelope['resource_locator'])
         idx['resource'][urllib.quote_plus(envelope['resource_locator'])] = new_node
     return new_node
+
 
 #Retrieve conforms to data from LR data
 def get_conforms_to_data(envelope):
@@ -54,16 +55,16 @@ def get_conforms_to_submitter_data(envelope):
         if not isinstance(x.text, types.NoneType):
             #Might be in unicode, encode to utf-8 and use urllib to escape special characters
             return urllib.quote_plus(x.text.encode('utf-8'))
-    
     #Check for publisher if no creator
     for y in xml.xpath("./dc:publisher", namespaces=xml_namespaces):
         #Only return if it's not none
         if not isinstance(y.text, types.NoneType):
-            #Might be in unicode, encode to utf-8 and use urllib to escape special characters            
+            #Might be in unicode, encode to utf-8 and use urllib to escape special characters
             return urllib.quote_plus(y.text.encode('utf-8'))
 
     #Return none if neither are found
     return None
+
 
 #Get related paradata that has a standard
 def get_paradata_standards_data(envelope):
@@ -71,6 +72,7 @@ def get_paradata_standards_data(envelope):
     for related in para['related']:
         if related['objectType'].lower() == 'academic standard':
             yield StandardsRelationship(standard=urllib.quote_plus(related['id']), relation=urllib.quote_plus(para['verb']['action']))
+
 
 #Retrieve actor data from paradata
 def get_paradata_actor_data(envelope):
@@ -80,13 +82,14 @@ def get_paradata_actor_data(envelope):
     else:
         return None
 
+
 def process_conforms_to_data(conforms_to, db, idx, new_node):
     for i in conforms_to:
         try:
             found_standard = idx.query(':'.join(['standard', i.standard]))
         except:
             found_standard = []
-        if  len(found_standard) > 0:
+        if len(found_standard) > 0:
             cc_node = found_standard[0]
             cc_node.properties['standard'] = i.standard
             cc_node.update()
@@ -95,8 +98,9 @@ def process_conforms_to_data(conforms_to, db, idx, new_node):
             idx['standard'][i.standard] = cc_node
         new_node.relationships.create(i.relation, cc_node)
 
+
 #Create new node with data
-def save_data(data_set, db, ridx, sidx, get_conforms_to_data_from_envelope, submitter_func=None):
+def save_data(data_set, db, ridx, get_conforms_to_data_from_envelope, submitter_func=None):
     for envelope in data_set:
         new_node = save_resource_node(envelope, db, ridx)
         if submitter_func is not None:
@@ -104,8 +108,7 @@ def save_data(data_set, db, ridx, sidx, get_conforms_to_data_from_envelope, subm
             if submitter_func(envelope):
                 submitter_node = db.nodes.create(submitter=submitter_func(envelope))
                 submitter_node.submitted(new_node)
-                sidx['submitter'][submitter_func(envelope)] = submitter_node
-        
+                ridx['submitter'][submitter_func(envelope)] = submitter_node
         process_conforms_to_data(get_conforms_to_data_from_envelope(envelope), db, ridx, new_node)
 
 
@@ -137,7 +140,6 @@ def process_cc_standards(db, idx):
             return standard_query[0]
         else:
             return db.nodes.create(standard=urllib.quote_plus(standard))
-    
     with open('E0330_ccss_identifiers.csv', 'rU') as f:
         dr = DictReader(f)
         for row in dr:
@@ -172,8 +174,8 @@ def init_neo4j(url):
     }
 
     if (orig_parts.username and orig_parts.password):
-        url_parts[1] = orig_parts.netloc[len(orig_parts.username)+len(orig_parts.password)+2:]
-        params.update( {
+        url_parts[1] = orig_parts.netloc[len(orig_parts.username) + len(orig_parts.password) + 2:]
+        params.update({
                 "url": urlparse.urlunparse(url_parts),
                 "username": orig_parts.username,
                 "password": orig_parts.password
@@ -181,7 +183,7 @@ def init_neo4j(url):
 
     #Initialize DB
     db = GraphDatabase(**params)
-    
+
     #If resources index already exists, grab it, else create it
     try:
         if RESOURCE_INDEX_NAME in db.nodes.indexes:
@@ -191,41 +193,33 @@ def init_neo4j(url):
     except:
         ridx = db.nodes.indexes.create(RESOURCE_INDEX_NAME, type="fulltext")
 
-    #If resources index already exists, grab it, else create it
-    try:
-        if SUBMITTER_INDEX_NAME in db.nodes.indexes:
-            sidx = db.nodes.indexes.get(SUBMITTER_INDEX_NAME)
-        else:
-            sidx = db.nodes.indexes.create(SUBMITTER_INDEX_NAME, type="fulltext")
-    except:
-        sidx = db.nodes.indexes.create(SUBMITTER_INDEX_NAME, type="fulltext")
+    return db, ridx
 
 
-    return db, ridx, sidx
-
-#Get the resource_data from each result and save 
-def process_data_service(results, db, ridx, sidx, conforms_func, submitter_func=None):
+#Get the resource_data from each result and save
+def process_data_service(results, db, ridx, conforms_func, submitter_func=None):
     for result_item in results:
-        save_data(result_item['resource_data'], db, ridx, sidx, conforms_func, submitter_func)
+        print(result_item)
+        save_data(result_item['resource_data'], db, ridx, conforms_func, submitter_func)
 
 
 def main(args):
     urls = [('Literacy', 'http://asn.jesandco.org/resources/D10003FC_manifest.json'),
             ("Math", "http://asn.jesandco.org/resources/D10003FB_manifest.json")]
-    
+
     #Relationships
     whitelist = ['matched', 'recommended', 'aligned']
-    
+
     #Initialize DB and index
-    db, ridx, sidx = init_neo4j(args.db)
-    
+    db, ridx = init_neo4j(args.db)
+
     #Get conformsTo LR data
     if args.url is not None and args.url is not "None":
         results = requests.get(args.url, prefetch=False)
         results = items(results.raw, 'documents.item')
 
         #Save conformsTo data
-        process_data_service(results, db, ridx, sidx, get_conforms_to_data, get_conforms_to_submitter_data)
+        process_data_service(results, db, ridx, get_conforms_to_data, get_conforms_to_submitter_data)
 
     #Return paradata matching to matched, recommended, or aligned
     def filter_paradata(item):
@@ -234,15 +228,15 @@ def main(args):
             valid = valid or x['resource_data']['verb']['action'] in whitelist
         return valid
 
-    if args.para is not None and args.para is not "None":    
+    if args.para is not None and args.para is not "None":
         #Get paradata
         results = requests.get(args.para, prefetch=False)
         results = (x for x in items(results.raw, 'documents.item') if filter_paradata(x))
 
         #Send in valid paradata standards data
-        process_data_service(results, db, ridx, sidx, get_paradata_standards_data, get_paradata_actor_data)
-    
-    #Create nodes from cc standards    
+        process_data_service(results, db, ridx, get_paradata_standards_data, get_paradata_actor_data)
+
+    #Create nodes from cc standards
     ids = process_cc_standards(db, ridx)
 
     #Create relationships from purl data
@@ -251,8 +245,8 @@ def main(args):
 #Add args in main for conformsTo and paradata URLs to harvest from
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Import LR data into Neo4j")
-    parser.add_argument("--url", dest="url", default='http://learnreg1.sri.com/extract/standards-alignment-dct-conformsTo/resource-by-ts', help="URL to the data service to harvest from")
-    parser.add_argument("--para", dest="para", default='http://learnreg1.sri.com/extract/standards-alignment-lr-paradata/resource-by-ts', help="URL to the data service to harvest from")
-    parser.add_argument("--db", dest="db", default="http://neo4j:learnreg3@learnreg3.sri.com/db/data/", help="URL to neo4j database")
+    parser.add_argument("--url", dest="url", default='http://node01.public.learningregistry.net/extract/standards-alignment-dct-conformsTo/resource-by-ts', help="URL to the data service to harvest from")
+    parser.add_argument("--para", dest="para", default='http://node01.public.learningregistry.net/extract/standards-alignment-lr-paradata/resource-by-ts', help="URL to the data service to harvest from")
+    parser.add_argument("--db", dest="db", default="http://localhost:7474/db/data/", help="URL to neo4j database")
     args = parser.parse_args()
     main(args)
