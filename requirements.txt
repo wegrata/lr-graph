@@ -5,5 +5,5 @@ ijson==0.8.0
 lucene-querybuilder==0.1.5
 lxml==2.3.5
 neo4jrestclient==1.7.0
-requests==0.13.6
+requests==2.20.0
 wsgiref==0.1.2
