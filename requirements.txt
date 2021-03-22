@@ -3,7 +3,7 @@ distribute==0.6.24
 httplib2==0.7.4
 ijson==0.8.0
 lucene-querybuilder==0.1.5
-lxml==2.3.5
+lxml==4.6.3
 neo4jrestclient==1.7.0
 requests==2.20.0
 wsgiref==0.1.2
